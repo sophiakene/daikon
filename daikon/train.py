@@ -50,10 +50,8 @@ def _sample_after_epoch(reader_ids: List[reader.ReaderTuple],
     logger.debug("-" * 30)
 
 
-def train(train_source_data: str,
-          train_target_data: str,
-          dev_source_data: str,
-          dev_target_data: str,
+def train(train_data: str,
+          dev_data: str,
           epochs: int,
           batch_size: int,
           source_vocab_max_size: int,
@@ -72,16 +70,16 @@ def train(train_source_data: str,
     logger.info("Creating vocabularies.")
 
     # create vocabulary to map words to ids, for source and target
-    source_vocab = create_vocab(train_source_data, source_vocab_max_size, save_to, C.SOURCE_VOCAB_FILENAME)
-    target_vocab = create_vocab(train_target_data, target_vocab_max_size, save_to, C.TARGET_VOCAB_FILENAME)
+    source_vocab = create_vocab(train_data[0], source_vocab_max_size, save_to, C.SOURCE_VOCAB_FILENAME)
+    target_vocab = create_vocab(train_data[1], target_vocab_max_size, save_to, C.TARGET_VOCAB_FILENAME)
 
     logger.info("Source vocabulary: %s", source_vocab)
     logger.info("Target vocabulary: %s", target_vocab)
 
     # convert training data to list of word ids
     logger.info("Reading training data.")
-    train_reader_ids = list(reader.read_parallel(train_source_data, train_target_data, source_vocab, target_vocab, C.MAX_LEN))
-    dev_reader_ids = list(reader.read_parallel(dev_source_data, dev_target_data, source_vocab, target_vocab, C.MAX_LEN))
+    train_reader_ids = list(reader.read_parallel(train_data[0], train_data[1], source_vocab, target_vocab, C.MAX_LEN))
+    dev_reader_ids = list(reader.read_parallel(dev_data[0], dev_data[1], source_vocab, target_vocab, C.MAX_LEN))
 
     # define computation graph
     logger.info("Building computation graph.")
@@ -124,17 +122,19 @@ def train(train_source_data: str,
                     iter_taken = time.time() - iter_tic
                     logger.debug("Epoch=%s, iteration=%s/%s, samples/second=%.2f", epoch, total_iter, num_batches, batch_size * C.LOGGING_INTERVAL / float(iter_taken))
                     iter_tic = time.time()
+
+                if total_iter % C.DEV_EVAL_INTERVAL == 0 or total_iter == num_batches:
+                    # calculate loss on development set
+                    for x, y, z in reader.iterate(dev_reader_ids, batch_size, shuffle=False):
+                        feed_dict = {encoder_inputs: x,
+                                    decoder_inputs: y,
+                                    decoder_targets: z}
+                        l, s = session.run([loss, summary], feed_dict=feed_dict)
+                        dev_summary_writer.add_summary(s, total_iter)
+
             perplexity = np.exp(total_loss / total_iter)
             logger.info("Perplexity on training data after epoch %s: %.2f", epoch, perplexity)
             saver.save(session, os.path.join(save_to, C.MODEL_FILENAME))
-
-            # calculate loss on development set
-            for x, y, z in reader.iterate(dev_reader_ids, batch_size, shuffle=False):
-                feed_dict = {encoder_inputs: x,
-                             decoder_inputs: y,
-                             decoder_targets: z}
-                l, s = session.run([loss, summary], feed_dict=feed_dict)
-                dev_summary_writer.add_summary(s, total_iter)
 
             if sample_after_epoch:
                 # sample from model after epoch
