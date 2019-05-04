@@ -125,12 +125,17 @@ def train(train_data: str,
 
                 if total_iter % C.DEV_EVAL_INTERVAL == 0 or total_iter == num_batches:
                     # calculate loss on development set
+                    losses = []
                     for x, y, z in reader.iterate(dev_reader_ids, batch_size, shuffle=False):
                         feed_dict = {encoder_inputs: x,
                                     decoder_inputs: y,
                                     decoder_targets: z}
-                        l, s = session.run([loss, summary], feed_dict=feed_dict)
-                        dev_summary_writer.add_summary(s, total_iter)
+                        l = session.run([loss, summary], feed_dict=feed_dict)
+                        losses.append(l[0])
+                    avg_loss = np.mean(losses)
+                    s = tf.Summary()
+                    s.value.add(tag="dev_loss", simple_value=avg_loss)
+                    dev_summary_writer.add_summary(s, total_iter)
 
             perplexity = np.exp(total_loss / total_iter)
             logger.info("Perplexity on training data after epoch %s: %.2f", epoch, perplexity)
