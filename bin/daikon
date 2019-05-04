@@ -129,6 +129,10 @@ def _set_up_logging(args):
 
     # log to logfile
     if args.action == 'train':
+        # create folders for logs if they don't exist yet
+        if not os.path.exists(args.log_to):
+            os.makedirs(args.log_to)
+
         logfile = os.path.join(args.log_to, C.TRAINING_LOG_FILENAME)
         file_handler = logging.FileHandler(filename=logfile, mode="w")
         file_handler.setLevel(logging.DEBUG)
