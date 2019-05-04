@@ -50,8 +50,10 @@ def _sample_after_epoch(reader_ids: List[reader.ReaderTuple],
     logger.debug("-" * 30)
 
 
-def train(source_data: str,
-          target_data: str,
+def train(train_source_data: str,
+          train_target_data: str,
+          dev_source_data: str,
+          dev_target_data: str,
           epochs: int,
           batch_size: int,
           source_vocab_max_size: int,
@@ -70,15 +72,16 @@ def train(source_data: str,
     logger.info("Creating vocabularies.")
 
     # create vocabulary to map words to ids, for source and target
-    source_vocab = create_vocab(source_data, source_vocab_max_size, save_to, C.SOURCE_VOCAB_FILENAME)
-    target_vocab = create_vocab(target_data, target_vocab_max_size, save_to, C.TARGET_VOCAB_FILENAME)
+    source_vocab = create_vocab(train_source_data, source_vocab_max_size, save_to, C.SOURCE_VOCAB_FILENAME)
+    target_vocab = create_vocab(train_target_data, target_vocab_max_size, save_to, C.TARGET_VOCAB_FILENAME)
 
     logger.info("Source vocabulary: %s", source_vocab)
     logger.info("Target vocabulary: %s", target_vocab)
 
     # convert training data to list of word ids
     logger.info("Reading training data.")
-    reader_ids = list(reader.read_parallel(source_data, target_data, source_vocab, target_vocab, C.MAX_LEN))
+    train_reader_ids = list(reader.read_parallel(train_source_data, train_target_data, source_vocab, target_vocab, C.MAX_LEN))
+    dev_reader_ids = list(reader.read_parallel(dev_source_data, dev_target_data, source_vocab, target_vocab, C.MAX_LEN))
 
     # define computation graph
     logger.info("Building computation graph.")
@@ -92,11 +95,12 @@ def train(source_data: str,
         # init
         session.run(tf.global_variables_initializer())
         # write logs (@tensorboard)
-        summary_writer = tf.summary.FileWriter(log_to, graph=tf.get_default_graph())
+        train_summary_writer = tf.summary.FileWriter(log_to + '/train', graph=tf.get_default_graph())
+        dev_summary_writer = tf.summary.FileWriter(log_to + '/dev')
 
         logger.info("Starting training.")
         tic = time.time()
-        num_batches = math.floor(len(reader_ids) / batch_size)
+        num_batches = math.floor(len(train_reader_ids) / batch_size)
 
         # iterate over training data `epochs` times
         for epoch in range(1, epochs + 1):
@@ -105,7 +109,7 @@ def train(source_data: str,
 
             iter_tic = time.time()
 
-            for x, y, z in reader.iterate(reader_ids, batch_size, shuffle=True):
+            for x, y, z in reader.iterate(train_reader_ids, batch_size, shuffle=True):
 
                 feed_dict = {encoder_inputs: x,
                              decoder_inputs: y,
@@ -113,7 +117,7 @@ def train(source_data: str,
 
                 l, _, s = session.run([loss, train_step, summary],
                                       feed_dict=feed_dict)
-                summary_writer.add_summary(s, total_iter)
+                train_summary_writer.add_summary(s, total_iter)
                 total_loss += l
                 total_iter += 1
                 if total_iter % C.LOGGING_INTERVAL == 0 or total_iter == num_batches:
@@ -124,9 +128,17 @@ def train(source_data: str,
             logger.info("Perplexity on training data after epoch %s: %.2f", epoch, perplexity)
             saver.save(session, os.path.join(save_to, C.MODEL_FILENAME))
 
+            # calculate loss on development set
+            for x, y, z in reader.iterate(dev_reader_ids, batch_size, shuffle=False):
+                feed_dict = {encoder_inputs: x,
+                             decoder_inputs: y,
+                             decoder_targets: z}
+                l, s = session.run([loss, summary], feed_dict=feed_dict)
+                dev_summary_writer.add_summary(s, total_iter)
+
             if sample_after_epoch:
                 # sample from model after epoch
-                thread = threading.Thread(target=_sample_after_epoch, args=[reader_ids, source_vocab, target_vocab, save_to, epoch])
+                thread = threading.Thread(target=_sample_after_epoch, args=[train_reader_ids, source_vocab, target_vocab, save_to, epoch])
                 thread.start()
 
         taken = time.time() - tic
