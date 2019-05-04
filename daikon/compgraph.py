@@ -54,8 +54,16 @@ def define_computation_graph(source_vocab_size: int, target_vocab_size: int, bat
                                                                  initial_state=encoder_final_state,
                                                                  dtype=tf.float32)
 
+    with tf.variable_scope("Recoder"):
+        recoder_cell = tf.contrib.rnn.ResidualWrapper(tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE))
+        initial_state = recoder_cell.zero_state(batch_size, tf.float32)
+        recoder_outputs, _ = tf.nn.dynamic_rnn(recoder_cell,
+                                               decoder_outputs,
+                                               initial_state=initial_state,
+                                               dtype=tf.float32)
+
     with tf.variable_scope("Logits"):
-        decoder_logits = tf.contrib.layers.linear(decoder_outputs, target_vocab_size)
+        decoder_logits = tf.contrib.layers.linear(recoder_outputs, target_vocab_size)
 
     with tf.variable_scope("Loss"):
         one_hot_labels = tf.one_hot(decoder_targets, depth=target_vocab_size, dtype=tf.float32)
