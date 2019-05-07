@@ -28,10 +28,10 @@ def get_argument_parser():
                         help='No logging output except for warnings and errors. (default: %(default)s)')
     # train
     train = subparsers.add_parser('train', help='Train a machine translation model.')
-    train.add_argument('--source', type=str, required=True, dest='source_data',
-                       help='the source training data, a tokenized, plain text file.')
-    train.add_argument('--target', type=str, required=True, dest='target_data',
-                       help='the target training data, a tokenized, plain text file.')
+    train.add_argument('--train', type=str, nargs=2, required=True, dest='train_data',
+                       help='the source and target training data, two tokenized, plain text files.')
+    train.add_argument('--dev', type=str, nargs=2, required=True, dest='dev_data',
+                       help='the source and target development data, two tokenized, plain text files.')
     train.add_argument('-e', '--epochs', type=int, default=10,
                        help='the number of training epochs. (default: %(default)s)')
     train.add_argument('-b', '--batch_size', type=int, default=20,
@@ -129,6 +129,10 @@ def _set_up_logging(args):
 
     # log to logfile
     if args.action == 'train':
+        # create folders for logs if they don't exist yet
+        if not os.path.exists(args.log_to):
+            os.makedirs(args.log_to)
+
         logfile = os.path.join(args.log_to, C.TRAINING_LOG_FILENAME)
         file_handler = logging.FileHandler(filename=logfile, mode="w")
         file_handler.setLevel(logging.DEBUG)

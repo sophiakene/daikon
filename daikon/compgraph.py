@@ -80,6 +80,7 @@ def define_computation_graph(source_vocab_size: int, target_vocab_size: int, bat
 
         coder_outputs2, decoder_final_state2 = tf.nn.dynamic_rnn(cell=coder_cell2,
                                                                 inputs=coder_outputs,initial_state=coder_final_state,
+
                                                                  dtype=tf.float32)
 
     with tf.variable_scope("Logits"):

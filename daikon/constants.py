@@ -46,3 +46,5 @@ LEARNING_RATE = 0.0001
 
 # log training progress every X batches
 LOGGING_INTERVAL = 1000
+# evaluate on development set every X batches
+DEV_EVAL_INTERVAL = 200
