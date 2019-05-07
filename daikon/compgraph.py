@@ -39,31 +39,39 @@ def define_computation_graph(source_vocab_size: int, target_vocab_size: int, bat
         decoder_inputs_embedded = tf.nn.embedding_lookup(target_embedding, decoder_inputs)
 
     with tf.variable_scope("Encoder"):
-        encoder_cell = tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE)
-        initial_state = encoder_cell.zero_state(batch_size, tf.float32)
+        encoder_cell_fw = tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE/2)
+        encoder_cell_bw = tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE/2)
+        initial_state_fw = encoder_cell_fw.zero_state(batch_size, tf.float32)
+        initial_state_bw = encoder_cell_bw.zero_state(batch_size, tf.float32)
 
-        encoder_outputs, encoder_final_state = tf.nn.dynamic_rnn(encoder_cell,
-                                                                 encoder_inputs_embedded,
-                                                                 initial_state=initial_state,
+        (encoder_outputs_fw, encoder_outputs_bw), (encoder_final_state_fw, encoder_final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell_fw,
+                                                                 cell_bw=encoder_cell_bw,
+                                                                 inputs=encoder_inputs_embedded,
                                                                  dtype=tf.float32)
+        encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 2)
+        encoder_final_state = tf.contrib.rnn.LSTMStateTuple(c=tf.concat([encoder_final_state_fw.c, encoder_final_state_bw.c], 1),
+                                                                h=tf.concat([encoder_final_state_fw.h, encoder_final_state_bw.h], 1))
 
     with tf.variable_scope("Decoder"):
         decoder_cell = tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE)
+        decoder_initial_state = decoder_cell.zero_state(batch_size, tf.float32)
+        print('decoder_initial_state', decoder_initial_state)
+        print('encoder_final_state', encoder_final_state)
         decoder_outputs, decoder_final_state = tf.nn.dynamic_rnn(decoder_cell,
                                                                  decoder_inputs_embedded,
                                                                  initial_state=encoder_final_state,
                                                                  dtype=tf.float32)
 
-    with tf.variable_scope("Recoder"):
-        recoder_cell = tf.contrib.rnn.ResidualWrapper(tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE))
-        initial_state = recoder_cell.zero_state(batch_size, tf.float32)
-        recoder_outputs, _ = tf.nn.dynamic_rnn(recoder_cell,
-                                               decoder_outputs,
-                                               initial_state=initial_state,
-                                               dtype=tf.float32)
+#    with tf.variable_scope("Recoder"):
+#        recoder_cell = tf.contrib.rnn.ResidualWrapper(tf.contrib.rnn.LSTMCell(C.HIDDEN_SIZE))
+#        initial_state = recoder_cell.zero_state(batch_size, tf.float32)
+#        recoder_outputs, _ = tf.nn.dynamic_rnn(recoder_cell,
+#                                               decoder_outputs,
+#                                               initial_state=initial_state,
+#                                               dtype=tf.float32)
 
     with tf.variable_scope("Logits"):
-        decoder_logits = tf.contrib.layers.linear(recoder_outputs, target_vocab_size)
+        decoder_logits = tf.contrib.layers.linear(decoder_outputs, target_vocab_size)
 
     with tf.variable_scope("Loss"):
         one_hot_labels = tf.one_hot(decoder_targets, depth=target_vocab_size, dtype=tf.float32)
